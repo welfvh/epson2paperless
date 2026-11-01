@@ -47,7 +47,7 @@ export function writeOutputFile(outputDir: string, filename: string, data: Buffe
   // wx = fail if exists. Atomic vs the existsSync-then-write TOCTOU pattern.
   while (true) {
     try {
-      fs.writeFileSync(filePath, data, { flag: "wx" });
+      fs.writeFileSync(filePath, data, { flag: "wx", mode: 0o600, flush: true });
       break;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;

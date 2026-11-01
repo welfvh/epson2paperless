@@ -5,6 +5,8 @@ import type * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import type * as tls from "node:tls";
+import { randomUUID } from "node:crypto";
+import { createLogger } from "./logger.js";
 import { IS_HEADER_SIZE } from "./protocol.js";
 import type { PaperlessUploadOptions } from "./paperless-upload.js";
 import type { PostProcessProfile } from "./postprocess/index.js";
@@ -12,6 +14,8 @@ import type { ToneCurveName } from "./postprocess/tone-curves.js";
 import type { WhitePoint } from "./postprocess/auto-color.js";
 import type { Downsample } from "./postprocess/downsample.js";
 import { DEFAULT_JPEG_QUALITY, type GrayscaleConversion } from "./config.js";
+
+const log = createLogger("scan-session");
 
 /**
  * Compact hex preview of a packet payload for diagnostics: length plus the
@@ -453,6 +457,24 @@ export async function runScanSession<Ctx>(
   const timeoutMs = opts.timeoutMs ?? graph.timeoutMs;
   const ctx = { ...initialCtx }; // engine owns mutability
 
+  // Keep the original response outside the disposable page directory.
+  // A configured persistent tempDir makes this archive survive restarts.
+  let captureFd: number;
+  let capturePath: string;
+  try {
+    const archiveDir = path.join(opts.tempDir || os.tmpdir(), "received");
+    fs.mkdirSync(archiveDir, { recursive: true, mode: 0o700 });
+    capturePath = path.join(archiveDir, `${opts.sessionTs.getTime()}-${randomUUID()}.bin`);
+    captureFd = fs.openSync(capturePath, "wx", 0o600);
+  } catch (err) {
+    return {
+      ok: false,
+      reason: err instanceof Error ? err : new Error(String(err)),
+      finalCtx: ctx,
+    };
+  }
+  log.info(`Retaining original scanner responses at ${capturePath}`);
+
   // Factory failures (TLS handshake, cert-fingerprint mismatch, plain TCP
   // connect refusal) must surface as { ok: false, reason } to keep the
   // engine's Result contract honest.
@@ -460,6 +482,7 @@ export async function runScanSession<Ctx>(
   try {
     transport = await transportFactory();
   } catch (err) {
+    fs.closeSync(captureFd);
     const reason = err instanceof Error ? err : new Error(String(err));
     return { ok: false, reason, finalCtx: ctx };
   }
@@ -592,6 +615,15 @@ export async function runScanSession<Ctx>(
     const settle = (result: RunScanSessionResult<Ctx>) => {
       if (settled) return; // idempotent — close handler may also call this
       settled = true;
+      try {
+        fs.closeSync(captureFd);
+      } catch (err) {
+        result = {
+          ok: false,
+          reason: err instanceof Error ? err : new Error(String(err)),
+          finalCtx: ctx,
+        };
+      }
       clearTimeoutTimer(); // (T15)
       clearWaitDeadline();
       cancelDelay?.();
@@ -625,24 +657,16 @@ export async function runScanSession<Ctx>(
             await runFinalize(sessionTempDir);
             resolve({ ok: true, finalCtx: ctx });
           } catch {
-            // finalizeSession's own `finally` already removes
-            // sessionTempDir before throwing — no extra cleanup here.
+            // Retain the source pages when final output fails.
             resolve(result);
           }
         })();
         return;
       }
 
-      // Non-recovery failure path — make sure flushed temp pages don't
-      // outlive the session. Successful DONE goes through doFinalize →
-      // finalizeSession (which rms in its own `finally`); only the
-      // unrecoverable-error branches leave the dir behind. Best-effort.
+      // A failed scan must retain completed pages for recovery.
       if (!result.ok && sessionTempDir !== null) {
-        try {
-          fs.rmSync(sessionTempDir, { recursive: true, force: true });
-        } catch {
-          /* swallow — best-effort cleanup */
-        }
+        log.error(`Scan failed; captured pages retained at ${sessionTempDir}`);
       }
 
       resolve(result);
@@ -731,9 +755,8 @@ export async function runScanSession<Ctx>(
     // legacy ESC/I WF-3620) where the printer firmware can RST the socket
     // after our FIN — a benign post-end event from the engine's point of
     // view, since enterState("DONE") has already scheduled doFinalize.
-    // Without the guard, that RST races doFinalize for settle() and would
-    // fall through to the unconditional rmSync in settle's failure branch
-    // mid-finalize, wiping the captured pages. The TLS path is shielded
+    // Without the guard, that RST races doFinalize for settle() and could
+    // report a failed scan while final output is still being written. The TLS path is shielded
     // by withTlsErrorLabels swallowing post-end ECONNRESET/EPIPE, but
     // that adapter doesn't apply to the plain-TCP transports.
     transport.on("error", (err) => {
@@ -760,6 +783,18 @@ export async function runScanSession<Ctx>(
     });
 
     transport.on("data", (chunk: Buffer) => {
+      if (settled) return;
+      try {
+        fs.appendFileSync(captureFd, chunk);
+        fs.fsyncSync(captureFd);
+      } catch (err) {
+        settle({
+          ok: false,
+          reason: err instanceof Error ? err : new Error(String(err)),
+          finalCtx: ctx,
+        });
+        return;
+      }
       recvChunks.push(chunk);
       recvBytes += chunk.length;
       wakeOnData?.();

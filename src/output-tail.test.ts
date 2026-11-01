@@ -279,7 +279,7 @@ describe("output-tail", () => {
     consoleSpy.mockRestore();
   });
 
-  it("removes the temp dir even when promotion fails", async () => {
+  it("retains source pages when promotion fails", async () => {
     // Point outputDir at a plain file so mkdirSync inside writeOutputFile throws
     const blockingFile = path.join(outputDir, "not-a-dir");
     writeFileSync(blockingFile, "blocker");
@@ -298,6 +298,8 @@ describe("output-tail", () => {
       }),
     ).rejects.toThrow();
 
-    expect(() => readdirSync(tempDir)).toThrow(/ENOENT/);
+    expect(readFileSync(path.join(tempDir, "page_001.jpg"))).toEqual(
+      Buffer.from("ffd8ffd9", "hex"),
+    );
   });
 });

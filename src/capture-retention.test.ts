@@ -46,7 +46,7 @@ describe("scan input retention", () => {
     const pending = runScanSession({
       graph,
       initialCtx: {},
-      transportFactory: async () => transport,
+      transportFactory: () => Promise.resolve(transport),
       tempDir: dir,
       outputDir: dir,
       sessionTs: new Date(),
@@ -74,7 +74,7 @@ describe("scan input retention", () => {
     const pending = runScanSession({
       graph,
       initialCtx: {},
-      transportFactory: async () => transport,
+      transportFactory: () => Promise.resolve(transport),
       tempDir: dir,
       outputDir: dir,
       sessionTs: new Date(),
@@ -97,7 +97,7 @@ describe("scan input retention", () => {
             next: "NEXT",
             flushPage: {
               side: "front",
-              encode: async () => page,
+              encode: () => Promise.resolve(page),
             },
           },
         },
@@ -113,7 +113,7 @@ describe("scan input retention", () => {
     const pending = runScanSession({
       graph,
       initialCtx: {},
-      transportFactory: async () => transport,
+      transportFactory: () => Promise.resolve(transport),
       tempDir: dir,
       outputDir: dir,
       sessionTs: new Date(),

@@ -199,6 +199,13 @@ skips. On ADF models without duplex hardware (ET-4800, ET-15000), set `SCAN_SIDE
 
 Configuration is via environment variables. Exactly one of `PRINTER_IP` and `PRINTER_HOSTNAME` is required.
 
+Original scanner responses are archived in `TEMP_DIR/received` before parsing.
+Failed scans retain completed pages. Final output failures also retain source pages.
+Set `TEMP_DIR` to a persistent directory or mounted volume to preserve these files
+across restarts and reboots. The OS default is temporary storage. Archives are not
+deleted automatically and can contain document contents; manage their retention
+and access as you would the final scans.
+
 Each setting's **Scope** column shows which printers it affects: `All`, `Panel` (panel-driven models), `FF-680W`, `DS-575W`, `Legacy ESC/I` (WF-3620 family, XP-620, ET-2550), or `ESC/I-2 TLS` (ET-4950 family). A setting outside a printer's path is simply ignored.
 
 | Variable              | Scope                        | Default          | What it does                                                                                                                                                                                                                                             |

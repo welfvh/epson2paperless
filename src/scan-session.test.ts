@@ -837,12 +837,12 @@ describe("runScanSession (engine pump)", () => {
     if (!result.ok) expect(result.reason.message).toMatch(/printer fatal mid-page-2/);
     // outputDir must remain empty — partial multi-page output isn't promoted.
     expect(fs.readdirSync(outputDir).length).toBe(0);
-    // Engine must rm sessionTempDir on non-cleanup failures so flushed
-    // page_NN.jpg files don't outlive the session under tempBase.
+    // Retain the completed first page without promoting a partial scan.
     const leftoverSessionDirs = fs
       .readdirSync(tempDir)
       .filter((entry) => entry.startsWith("epson2paperless-"));
-    expect(leftoverSessionDirs).toEqual([]);
+    expect(leftoverSessionDirs).toHaveLength(1);
+    expect(fs.existsSync(path.join(tempDir, leftoverSessionDirs[0], "page_01.jpg"))).toBe(true);
 
     fs.rmSync(tempDir, { recursive: true, force: true });
     fs.rmSync(outputDir, { recursive: true, force: true });

@@ -46,7 +46,7 @@ export interface FinalizeSessionArgs {
 
 /**
  * Promote per-session temp JPGs to final output (JPG copy or composed PDF),
- * optionally upload to Paperless, then remove the temp dir.
+ * optionally upload to Paperless, then remove successfully saved temp pages.
  *
  * Caller is responsible for closing any open sockets BEFORE calling this —
  * see `scanner.ts:973-981` for the rationale (TLS close_notify must hit
@@ -67,6 +67,7 @@ export async function finalizeSession(args: FinalizeSessionArgs): Promise<void> 
     whitePoint,
     downsample,
   } = args;
+  let outputSaved = false;
   try {
     if (downsample) {
       log.info(`downsampling ${downsample.fromDpi} → ${downsample.toDpi} DPI (host-side fallback)`);
@@ -95,6 +96,7 @@ export async function finalizeSession(args: FinalizeSessionArgs): Promise<void> 
         log.info(`Saved ${savedPaths.length} JPG file(s) as fallback`);
       }
     }
+    outputSaved = true;
     if (paperless) {
       // Defense-in-depth: `uploadAllToPaperless` is engineered to never
       // reject (per-file errors are .catch-wrapped inside the module), but
@@ -112,6 +114,7 @@ export async function finalizeSession(args: FinalizeSessionArgs): Promise<void> 
       }
     }
   } finally {
-    fs.rmSync(sessionTempDir, { recursive: true, force: true });
+    if (outputSaved) fs.rmSync(sessionTempDir, { recursive: true, force: true });
+    else log.error(`Output failed; original pages retained at ${sessionTempDir}`);
   }
 }

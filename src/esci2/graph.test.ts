@@ -1648,13 +1648,14 @@ describe("esci2Graph POST_MODE_STAT — source from the status before PARA (mode
     header: Buffer,
     body: Buffer | null,
     preset: "adf" | "flatbed" = "adf",
+    requireAdf = false,
   ): { ctx: import("./graph.js").Esci2Ctx; outcome: string | undefined } {
     const stat = esci2Graph.states.POST_MODE_STAT;
     const drain = esci2Graph.states.POST_MODE_STAT_DRAIN;
     if (stat.kind !== "decision" || drain.kind !== "decision") {
       throw new Error("POST_MODE_STAT / _DRAIN not decisions");
     }
-    const ctx = makeCtx({ entry, source: preset });
+    const ctx = makeCtx({ entry, source: preset, requireAdf });
     applyEntrySourceOverride(ctx, entry);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -1670,6 +1671,17 @@ describe("esci2Graph POST_MODE_STAT — source from the status before PARA (mode
       log.mockRestore();
     }
   }
+
+  it("automatic feeder scans stop before PARA if the paper was removed", () => {
+    const { outcome } = statusBeforePara(
+      ET4950_ENTRY,
+      statHeader(12),
+      Buffer.from("#ERRADF PE  "),
+      "adf",
+      true,
+    );
+    expect(outcome).toContain("flatbed fallback is disabled");
+  });
 
   it("ADF paper empty → the flatbed, which scans", () => {
     const { ctx, outcome } = statusBeforePara(

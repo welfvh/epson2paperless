@@ -503,6 +503,7 @@ export interface DispatchArgs {
   paperless: PaperlessUploadOptions | undefined;
   productName: string | null;
   printerIp?: string;
+  requireAdf?: boolean;
 }
 
 export async function dispatchScanSession(args: DispatchArgs): Promise<void> {
@@ -548,6 +549,7 @@ export async function dispatchScanSession(args: DispatchArgs): Promise<void> {
       timeoutMs: args.config.esci2TimeoutMs,
       paperless: args.paperless,
       printerCertFingerprint: args.config.printerCertFingerprint,
+      requireAdf: args.requireAdf,
     });
   }
   if (variant === "esci2-plain") {
@@ -557,6 +559,7 @@ export async function dispatchScanSession(args: DispatchArgs): Promise<void> {
     // ignored on this path (no TLS layer); config-time Zod validation
     // rejects the combo at startup.
     return runEsci2ScanOverPlain({
+      requireAdf: args.requireAdf,
       printerIp,
       port: 1865,
       destId: args.config.scanDestId,
@@ -573,6 +576,10 @@ export async function dispatchScanSession(args: DispatchArgs): Promise<void> {
       paperless: args.paperless,
     });
   }
+  if (args.requireAdf)
+    throw new Error(
+      "Automatic feeder scanning requires ESC/I-2; use the printer panel for this model.",
+    );
   // Legacy. Source is autodetected from the FS F status byte (see esci/scanner.ts
   // STATUS_2). ESCI_FORCE_SOURCE overrides the autodetection for users hitting
   // edge cases the autodetect doesn't cover (yet).

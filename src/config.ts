@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import { z } from "zod";
 
 export const DEFAULT_JPEG_QUALITY = 90;
@@ -145,6 +146,12 @@ export const configSchema = z
     // family) test v3 keepalives without a code change; v3 also switches the
     // burst to an ephemeral source port (see keepalive.ts).
     netscanVersion: z.enum(["auto", "2.0", "3.0"]).default("auto"),
+    autoFeedJournal: z.string().refine(isAbsolute, "AUTO_FEED_JOURNAL must be absolute").optional(),
+    autoFeedCertFingerprint: z
+      .string()
+      .regex(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/i)
+      .transform((s) => s.toUpperCase())
+      .optional(),
     tempDir: z.string().default(""),
     shutdownTimeoutMs: z.coerce.number().int().min(100).default(120000),
     // Rolling per-state no-response timeout for the ESC/I-2 scan session.
@@ -234,6 +241,13 @@ export const configSchema = z
         path: ["printerCertFingerprint"],
       });
     }
+    if (Boolean(cfg.autoFeedJournal) !== Boolean(cfg.autoFeedCertFingerprint)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "AUTO_FEED_JOURNAL and AUTO_FEED_CERT_FINGERPRINT must be set together",
+        path: ["autoFeedJournal"],
+      });
+    }
     // ESCI_FORCE_SOURCE only applies to the legacy ESC/I scanner —
     // ESC/I-2 (TLS or plain) detects source via the status before PARA
     // (POST_MODE_STAT).
@@ -292,6 +306,8 @@ export function loadConfig(): Config {
     scanTriggerToken: process.env.SCAN_TRIGGER_TOKEN || undefined,
     scanResolution: process.env.SCAN_RESOLUTION || undefined,
     scanColorMode: process.env.SCAN_COLOR_MODE || undefined,
+    autoFeedJournal: process.env.AUTO_FEED_JOURNAL || undefined,
+    autoFeedCertFingerprint: process.env.AUTO_FEED_CERT_FINGERPRINT || undefined,
     tempDir: process.env.TEMP_DIR || undefined,
     shutdownTimeoutMs: process.env.SHUTDOWN_TIMEOUT_MS || undefined,
     esci2TimeoutMs: process.env.ESCI2_TIMEOUT_MS || undefined,

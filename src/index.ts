@@ -11,9 +11,12 @@ import {
   buildPushScanServerOptions,
   buildScanTriggerOptions,
   trackPendingHooks,
+  dispatchScanSession,
+  buildPaperlessOptions,
 } from "./startup.js";
 import { createPrinterTarget } from "./network.js";
 import { createScanAdmission } from "./scan-admission.js";
+import { createFeederMonitor, readFeederStatus } from "./auto-feeder.js";
 
 const log = createLogger("main");
 
@@ -58,7 +61,37 @@ async function main() {
 
   log.info("epson2paperless ready — waiting for scan from printer panel");
 
+  let feeder: ReturnType<typeof createFeederMonitor> | undefined;
+  if (config.autoFeedJournal && config.autoFeedCertFingerprint) {
+    try {
+      const fingerprint = config.autoFeedCertFingerprint;
+      feeder = createFeederMonitor({
+        journalPath: config.autoFeedJournal,
+        admission,
+        readStatus: async (signal) => readFeederStatus(await target.target(), fingerprint, signal),
+        scan: (status) =>
+          dispatchScanSession({
+            config,
+            printerIp: status.printerIp,
+            productName: null,
+            duplex: config.scanSides === "duplex",
+            action: config.scanFormat,
+            paperless: buildPaperlessOptions(config),
+            requireAdf: true,
+          }),
+      });
+      feeder.start();
+      log.info("Automatic feeder enabled: load paper and wait 3 seconds after the scanner is idle");
+    } catch (error) {
+      log.error(
+        "Automatic feeder disabled: repair the journal, then restart. Panel scanning remains available.",
+        error,
+      );
+    }
+  }
+
   const handleSignal = (signal: string): void => {
+    feeder?.stop();
     runShutdown({
       pushscanServer,
       healthServer,

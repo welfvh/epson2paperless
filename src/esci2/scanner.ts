@@ -55,6 +55,7 @@ export interface ScanSession {
   timeoutMs?: number;
   paperless?: PaperlessUploadOptions;
   printerCertFingerprint?: string;
+  requireAdf?: boolean;
 }
 
 /**
@@ -89,6 +90,7 @@ function validateTempBase(session: ScanSession): void {
 function buildInitialCtx(session: ScanSession, transport: "tls" | "plain"): Esci2Ctx {
   return {
     duplex: session.duplex,
+    requireAdf: session.requireAdf,
     // A transport-level default until the dialect resolves: a single-source
     // printer is then pinned to its source (applyEntrySourceOverride), and
     // one with both sources takes it from the status before PARA

@@ -57,6 +57,7 @@ const log = createLogger("scanner-esci2");
 export interface Esci2Ctx {
   duplex: boolean;
   source: "adf" | "flatbed"; // decided from the status before PARA (POST_MODE_STAT)
+  requireAdf?: boolean;
   /** Transport layer in use this session. Probe-driven, not dialect-driven. */
   transport: "tls" | "plain";
   initPollIteration: number;
@@ -894,6 +895,13 @@ function settlePreParaStatus(
       statLength: parseEsci2ReplyHeader(status[0])?.length ?? 0,
       source: ctx.source,
     });
+  }
+  if (ctx.requireAdf && ctx.source !== "adf") {
+    return {
+      error: new Error(
+        "Automatic feeder scan needs paper in the ADF; flatbed fallback is disabled. Reload the feeder to retry.",
+      ),
+    };
   }
   const judgement = judgeStatusErrors(errors, ctx.source);
   if ("blocking" in judgement) {

@@ -80,6 +80,8 @@ export function readFeederStatus(
       {
         host: printerIp,
         port: 443,
+        // Epson omits the peer certificate on a resumed TLS session. Pin every fresh connection.
+        agent: false,
         path: "/eSCL/ScannerStatus",
         // Epson uses a self-signed certificate. Accept only the configured SHA-256 pin below.
         rejectUnauthorized: false,
